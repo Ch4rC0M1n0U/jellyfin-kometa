@@ -1,0 +1,19 @@
+# nixpacks.toml
+
+providers = ["node", "python"]
+
+[phases.setup]
+# Assurez-vous que Python 3.x est disponible
+# Nixpacks devrait le détecter via le provider "python",
+# mais on peut spécifier des paquets Nix si besoin.
+# nixPkgs = ["...", "python3"] # Généralement pas nécessaire si provider "python" est listé
+
+[phases.install]
+# Nixpacks installera les dépendances Node via package.json
+# Si vous avez des dépendances Python spécifiques (comme celles dans requirements.txt),
+# Nixpacks devrait aussi les gérer si un requirements.txt ou pyproject.toml est présent.
+# cmds = ["pip install -r requirements.txt"] # Si vous avez un requirements.txt
+
+[start]
+# Commande pour démarrer votre application Next.js
+cmd = "npm run start"

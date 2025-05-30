@@ -1,0 +1,23 @@
+# Fichier de surcharge pour le développement
+version: '3.8'
+
+services:
+  jellyfin-kometa:
+    build:
+      context: .
+      target: base
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - NODE_ENV=development
+    command: ["npm", "run", "dev"]
+    ports:
+      - "3000:3000"
+      - "9229:9229" # Port de debug Node.js
+
+  # Désactive Jellyfin en développement si vous en avez déjà un
+  jellyfin:
+    profiles:
+      - production

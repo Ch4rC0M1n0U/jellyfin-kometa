@@ -1,0 +1,116 @@
+version: '3.8'
+
+services:
+  # Interface web Jellyfin Kometa
+  jellyfin-kometa:
+    build: .
+    container_name: jellyfin-kometa
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - JELLYFIN_URL=${JELLYFIN_URL}
+      - JELLYFIN_API_KEY=${JELLYFIN_API_KEY}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+      - ./data:/app/data
+    networks:
+      - jellyfin-network
+    depends_on:
+      - redis
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Redis pour le cache et les sessions
+  redis:
+    image: redis:7-alpine
+    container_name: jellyfin-kometa-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    networks:
+      - jellyfin-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Serveur Jellyfin (optionnel - si vous n'en avez pas déjà un)
+  jellyfin:
+    image: jellyfin/jellyfin:latest
+    container_name: jellyfin-server
+    restart: unless-stopped
+    ports:
+      - "8096:8096"
+      - "8920:8920"
+    environment:
+      - JELLYFIN_PublishedServerUrl=${JELLYFIN_PUBLISHED_URL:-http://localhost:8096}
+    volumes:
+      - jellyfin-config:/config
+      - jellyfin-cache:/cache
+      - ${MEDIA_PATH:-./media}:/media:ro
+    networks:
+      - jellyfin-network
+    devices:
+      - /dev/dri:/dev/dri # Pour l'accélération matérielle (optionnel)
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8096/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Planificateur de tâches pour l'exécution automatique
+  kometa-scheduler:
+    build: .
+    container_name: jellyfin-kometa-scheduler
+    restart: unless-stopped
+    environment:
+      - SCHEDULER_MODE=true
+      - CRON_SCHEDULE=${CRON_SCHEDULE:-0 */6 * * *}  # Toutes les 6 heures par défaut
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+      - ./data:/app/data
+    networks:
+      - jellyfin-network
+    depends_on:
+      - jellyfin-kometa
+      - redis
+    command: ["python3", "/app/scripts/scheduler.py"]
+
+  # Nginx pour le reverse proxy (optionnel)
+  nginx:
+    image: nginx:alpine
+    container_name: jellyfin-kometa-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/ssl:/etc/nginx/ssl:ro
+    networks:
+      - jellyfin-network
+    depends_on:
+      - jellyfin-kometa
+    profiles:
+      - nginx
+
+networks:
+  jellyfin-network:
+    driver: bridge
+
+volumes:
+  redis-data:
+  jellyfin-config:
+  jellyfin-cache:

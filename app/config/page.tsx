@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Switch } from "@/components/ui/switch"
-import { Save, TestTube, Plus, Trash2, ArrowLeft, CheckCircle, XCircle } from "lucide-react"
+import { Save, TestTube, Plus, Trash2, ArrowLeft, CheckCircle, XCircle, AlertCircle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 interface JellyfinConfig {
@@ -48,7 +48,10 @@ interface Config {
 
 export default function ConfigPage() {
   const [config, setConfig] = useState<Config>({
-    jellyfin: { url: "", api_key: "" },
+    jellyfin: {
+      url: process.env.NEXT_PUBLIC_JELLYFIN_URL || "",
+      api_key: "", // Ne pas exposer la clé API côté client
+    },
     libraries: {},
     settings: {
       update_interval: 3600,
@@ -58,12 +61,17 @@ export default function ConfigPage() {
     },
   })
   const [connectionStatus, setConnectionStatus] = useState<"idle" | "testing" | "success" | "error">("idle")
+  const [connectionInfo, setConnectionInfo] = useState<{ serverName?: string; version?: string }>({})
   const [yamlConfig, setYamlConfig] = useState("")
   const [activeTab, setActiveTab] = useState("jellyfin")
   const { toast } = useToast()
 
   useEffect(() => {
     loadConfig()
+    // Test automatique de la connexion au chargement
+    if (process.env.NEXT_PUBLIC_JELLYFIN_URL) {
+      testConnectionAuto()
+    }
   }, [])
 
   const loadConfig = async () => {
@@ -72,10 +80,15 @@ export default function ConfigPage() {
       if (response.ok) {
         const data = await response.json()
         setConfig(data)
-        setYamlConfig(data.yaml || "")
+        setYamlConfig(JSON.stringify(data, null, 2))
       }
     } catch (error) {
       console.error("Erreur lors du chargement de la configuration:", error)
+      toast({
+        title: "Erreur de chargement",
+        description: "Impossible de charger la configuration",
+        variant: "destructive",
+      })
     }
   }
 
@@ -93,7 +106,8 @@ export default function ConfigPage() {
           description: "Les paramètres ont été mis à jour avec succès",
         })
       } else {
-        throw new Error("Erreur lors de la sauvegarde")
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Erreur lors de la sauvegarde")
       }
     } catch (error) {
       toast({
@@ -101,6 +115,25 @@ export default function ConfigPage() {
         description: error instanceof Error ? error.message : "Une erreur est survenue",
         variant: "destructive",
       })
+    }
+  }
+
+  const testConnectionAuto = async () => {
+    try {
+      const response = await fetch("/api/jellyfin/test")
+      const data = await response.json()
+
+      if (data.connected) {
+        setConnectionStatus("success")
+        setConnectionInfo({
+          serverName: data.serverName,
+          version: data.version,
+        })
+      } else {
+        setConnectionStatus("error")
+      }
+    } catch (error) {
+      setConnectionStatus("error")
     }
   }
 
@@ -113,17 +146,23 @@ export default function ConfigPage() {
         body: JSON.stringify(config.jellyfin),
       })
 
-      setConnectionStatus(response.ok ? "success" : "error")
+      const data = await response.json()
 
-      if (response.ok) {
+      if (response.ok && data.connected) {
+        setConnectionStatus("success")
+        setConnectionInfo({
+          serverName: data.serverName,
+          version: data.version,
+        })
         toast({
           title: "Connexion réussie",
-          description: "La connexion à Jellyfin a été établie",
+          description: `Connecté à ${data.serverName} (v${data.version})`,
         })
       } else {
+        setConnectionStatus("error")
         toast({
           title: "Échec de la connexion",
-          description: "Vérifiez l'URL et la clé API",
+          description: data.error || "Vérifiez l'URL et la clé API",
           variant: "destructive",
         })
       }
@@ -197,7 +236,22 @@ export default function ConfigPage() {
       case "error":
         return <XCircle className="h-4 w-4 text-red-500" />
       default:
-        return null
+        return <AlertCircle className="h-4 w-4 text-yellow-500" />
+    }
+  }
+
+  const getConnectionMessage = () => {
+    switch (connectionStatus) {
+      case "success":
+        return connectionInfo.serverName
+          ? `Connecté à ${connectionInfo.serverName} (v${connectionInfo.version})`
+          : "Connexion réussie"
+      case "error":
+        return "Échec de la connexion"
+      case "testing":
+        return "Test en cours..."
+      default:
+        return "Non testé"
     }
   }
 
@@ -223,6 +277,23 @@ export default function ConfigPage() {
         </Button>
       </div>
 
+      {/* Statut de connexion global */}
+      <Card
+        className={
+          connectionStatus === "success" ? "border-green-200" : connectionStatus === "error" ? "border-red-200" : ""
+        }
+      >
+        <CardContent className="pt-6">
+          <div className="flex items-center gap-3">
+            {getConnectionIcon()}
+            <div>
+              <p className="font-medium">Statut de connexion Jellyfin</p>
+              <p className="text-sm text-muted-foreground">{getConnectionMessage()}</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="jellyfin">Jellyfin</TabsTrigger>
@@ -236,7 +307,10 @@ export default function ConfigPage() {
           <Card>
             <CardHeader>
               <CardTitle>Connexion Jellyfin</CardTitle>
-              <CardDescription>Configurez la connexion à votre serveur Jellyfin</CardDescription>
+              <CardDescription>
+                Configurez la connexion à votre serveur Jellyfin. L'URL est configurée via les variables
+                d'environnement.
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
@@ -252,6 +326,9 @@ export default function ConfigPage() {
                     }))
                   }
                 />
+                <p className="text-xs text-muted-foreground">
+                  URL configurée via NEXT_PUBLIC_JELLYFIN_URL: {process.env.NEXT_PUBLIC_JELLYFIN_URL || "Non définie"}
+                </p>
               </div>
 
               <div className="space-y-2">
@@ -259,7 +336,7 @@ export default function ConfigPage() {
                 <Input
                   id="jellyfin-api-key"
                   type="password"
-                  placeholder="Votre clé API Jellyfin"
+                  placeholder="Configurée via les variables d'environnement"
                   value={config.jellyfin.api_key}
                   onChange={(e) =>
                     setConfig((prev) => ({
@@ -268,6 +345,9 @@ export default function ConfigPage() {
                     }))
                   }
                 />
+                <p className="text-xs text-muted-foreground">
+                  La clé API est configurée via JELLYFIN_API_KEY sur le serveur
+                </p>
               </div>
 
               <div className="flex items-center gap-2">
@@ -276,16 +356,39 @@ export default function ConfigPage() {
                   Tester la connexion
                 </Button>
                 {getConnectionIcon()}
-                {connectionStatus === "success" && <span className="text-sm text-green-600">Connexion réussie</span>}
-                {connectionStatus === "error" && <span className="text-sm text-red-600">Échec de la connexion</span>}
+                <span
+                  className={`text-sm ${
+                    connectionStatus === "success"
+                      ? "text-green-600"
+                      : connectionStatus === "error"
+                        ? "text-red-600"
+                        : "text-yellow-600"
+                  }`}
+                >
+                  {getConnectionMessage()}
+                </span>
               </div>
+
+              {connectionStatus === "success" && connectionInfo.serverName && (
+                <div className="mt-4 p-4 bg-green-50 rounded-lg border border-green-200">
+                  <h4 className="font-medium text-green-800">Informations du serveur</h4>
+                  <div className="mt-2 space-y-1 text-sm text-green-700">
+                    <p>
+                      <strong>Nom:</strong> {connectionInfo.serverName}
+                    </p>
+                    <p>
+                      <strong>Version:</strong> {connectionInfo.version}
+                    </p>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
 
         {/* Configuration des bibliothèques */}
         <TabsContent value="libraries" className="space-y-4">
-          {["Films", "Séries TV", "Documentaires"].map((libraryName) => (
+          {["Films", "Séries TV", "Documentaires", "Musique"].map((libraryName) => (
             <Card key={libraryName}>
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -381,6 +484,42 @@ export default function ConfigPage() {
                       </div>
 
                       <div className="space-y-2">
+                        <Label>Plage d'années</Label>
+                        <div className="flex gap-2">
+                          <Input
+                            type="number"
+                            placeholder="1980"
+                            value={collection.filters.year_range?.[0] || ""}
+                            onChange={(e) => {
+                              const start = e.target.value ? Number.parseInt(e.target.value) : undefined
+                              const end = collection.filters.year_range?.[1]
+                              updateCollection(libraryName, key, {
+                                filters: {
+                                  ...collection.filters,
+                                  year_range: start && end ? [start, end] : undefined,
+                                },
+                              })
+                            }}
+                          />
+                          <Input
+                            type="number"
+                            placeholder="1989"
+                            value={collection.filters.year_range?.[1] || ""}
+                            onChange={(e) => {
+                              const start = collection.filters.year_range?.[0]
+                              const end = e.target.value ? Number.parseInt(e.target.value) : undefined
+                              updateCollection(libraryName, key, {
+                                filters: {
+                                  ...collection.filters,
+                                  year_range: start && end ? [start, end] : undefined,
+                                },
+                              })
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
                         <Label>URL Poster</Label>
                         <Input
                           placeholder="https://..."
@@ -427,6 +566,9 @@ export default function ConfigPage() {
                     }))
                   }
                 />
+                <p className="text-xs text-muted-foreground">
+                  Temps d'attente entre les exécutions automatiques (3600 = 1 heure)
+                </p>
               </div>
 
               <div className="flex items-center justify-between">
@@ -487,18 +629,20 @@ export default function ConfigPage() {
           <Card>
             <CardHeader>
               <CardTitle>Configuration YAML</CardTitle>
-              <CardDescription>Éditez directement la configuration au format YAML</CardDescription>
+              <CardDescription>Visualisez la configuration au format JSON (lecture seule)</CardDescription>
             </CardHeader>
             <CardContent>
               <Textarea
-                placeholder="Configuration YAML..."
-                value={yamlConfig}
-                onChange={(e) => setYamlConfig(e.target.value)}
+                placeholder="Configuration JSON..."
+                value={JSON.stringify(config, null, 2)}
+                readOnly
                 className="min-h-[400px] font-mono"
               />
               <div className="mt-4 flex gap-2">
-                <Button variant="outline">Valider YAML</Button>
-                <Button>Appliquer Configuration</Button>
+                <Button variant="outline" onClick={() => setYamlConfig(JSON.stringify(config, null, 2))}>
+                  Actualiser
+                </Button>
+                <Button onClick={() => navigator.clipboard.writeText(JSON.stringify(config, null, 2))}>Copier</Button>
               </div>
             </CardContent>
           </Card>

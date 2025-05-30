@@ -77,9 +77,23 @@ export default function Dashboard() {
     setConnectionStatus("checking")
     try {
       const response = await fetch("/api/jellyfin/test")
-      setConnectionStatus(response.ok ? "connected" : "disconnected")
+      const data = await response.json()
+
+      if (data.connected) {
+        setConnectionStatus("connected")
+        // Afficher les informations du serveur si disponibles
+        if (data.serverName) {
+          toast({
+            title: "Connexion établie",
+            description: `Connecté à ${data.serverName} (v${data.version})`,
+          })
+        }
+      } else {
+        setConnectionStatus("disconnected")
+      }
     } catch (error) {
       setConnectionStatus("disconnected")
+      console.error("Erreur de connexion:", error)
     }
   }
 
@@ -139,61 +153,61 @@ export default function Dashboard() {
   }
 
   // Données de démonstration
-  const demoLibraries: LibraryStats[] = [
-    {
-      name: "Films",
-      totalItems: 1247,
-      collections: 12,
-      lastUpdate: "2024-01-15 14:30",
-      status: "success",
-    },
-    {
-      name: "Séries TV",
-      totalItems: 89,
-      collections: 8,
-      lastUpdate: "2024-01-15 14:25",
-      status: "success",
-    },
-    {
-      name: "Documentaires",
-      totalItems: 156,
-      collections: 3,
-      lastUpdate: "2024-01-15 14:20",
-      status: "idle",
-    },
-  ]
+  // const demoLibraries: LibraryStats[] = [
+  //   {
+  //     name: "Films",
+  //     totalItems: 1247,
+  //     collections: 12,
+  //     lastUpdate: "2024-01-15 14:30",
+  //     status: "success",
+  //   },
+  //   {
+  //     name: "Séries TV",
+  //     totalItems: 89,
+  //     collections: 8,
+  //     lastUpdate: "2024-01-15 14:25",
+  //     status: "success",
+  //   },
+  //   {
+  //     name: "Documentaires",
+  //     totalItems: 156,
+  //     collections: 3,
+  //     lastUpdate: "2024-01-15 14:20",
+  //     status: "idle",
+  //   },
+  // ]
 
-  const demoLogs: ExecutionLog[] = [
-    {
-      id: "1",
-      timestamp: "14:30:15",
-      type: "success",
-      message: 'Collection "Films Marvel" créée avec 23 éléments',
-      library: "Films",
-    },
-    {
-      id: "2",
-      timestamp: "14:29:45",
-      type: "info",
-      message: "Traitement de la bibliothèque Films en cours...",
-      library: "Films",
-    },
-    {
-      id: "3",
-      timestamp: "14:29:30",
-      type: "success",
-      message: "Connexion à Jellyfin établie",
-    },
-    {
-      id: "4",
-      timestamp: "14:29:00",
-      type: "info",
-      message: "Démarrage de l'exécution du script",
-    },
-  ]
+  // const demoLogs: ExecutionLog[] = [
+  //   {
+  //     id: "1",
+  //     timestamp: "14:30:15",
+  //     type: "success",
+  //     message: 'Collection "Films Marvel" créée avec 23 éléments',
+  //     library: "Films",
+  //   },
+  //   {
+  //     id: "2",
+  //     timestamp: "14:29:45",
+  //     type: "info",
+  //     message: "Traitement de la bibliothèque Films en cours...",
+  //     library: "Films",
+  //   },
+  //   {
+  //     id: "3",
+  //     timestamp: "14:29:30",
+  //     type: "success",
+  //     message: "Connexion à Jellyfin établie",
+  //   },
+  //   {
+  //     id: "4",
+  //     timestamp: "14:29:00",
+  //     type: "info",
+  //     message: "Démarrage de l'exécution du script",
+  //   },
+  // ]
 
-  const displayLibraries = libraries.length > 0 ? libraries : demoLibraries
-  const displayLogs = recentLogs.length > 0 ? recentLogs : demoLogs
+  const displayLibraries = libraries
+  const displayLogs = recentLogs
 
   return (
     <div className="container mx-auto p-6 space-y-6">

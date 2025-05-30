@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server"
+import fs from "fs"
+import path from "path"
 
 async function getJellyfinData() {
   const jellyfinUrl = process.env.JELLYFIN_URL || "http://localhost:8096"
@@ -101,8 +103,6 @@ export async function GET() {
     // Récupérer les logs récents depuis le fichier
     const recentLogs = []
     try {
-      const fs = require("fs")
-      const path = require("path")
       const logPath = path.join(process.cwd(), "logs", "kometa.log")
 
       if (fs.existsSync(logPath)) {

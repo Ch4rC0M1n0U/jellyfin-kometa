@@ -14,7 +14,8 @@ async function executeKometaScript() {
       return
     })
 
-    const pythonProcess = spawn("python3", [scriptPath, configPath], {
+    const pythonExecutable = "/usr/bin/python3" // Chemin absolu pour Alpine Linux
+    const pythonProcess = spawn(pythonExecutable, [scriptPath, configPath], {
       cwd: process.cwd(),
       env: {
         ...process.env,
